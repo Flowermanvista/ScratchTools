@@ -1,8 +1,8 @@
 /*
 apologies in advance for desecrating/mutilating/whatever you want to call it @Vadik1's great work. 
 I just picked it as my victim^H^H^H^H^H^H base because it had premade code for working with files
-and parsing Scratch projects, which is something I *really* didn't want to try and figure out
-because I was just too desperate for this thing to become a reality ASAP.
+and parsing Scratch projects, - working with files in JS being something I *really* didn't want 
+to try and figure out because I was just too desperate for this thing to become a reality ASAP.
 */
 String.prototype.occurrences = function(string, display) {
 	var r = this.indexOf(string);
