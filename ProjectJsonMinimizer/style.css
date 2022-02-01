@@ -3,7 +3,7 @@ button{
 	margin: 0px 3px;
 	background-color: #4d97ff;
 	border-radius: 5px;
-	width: 140px;
+	width: 200px;
 	height: 40px;
 	font-size: 15px;
 	font-weight: bold;
@@ -26,6 +26,7 @@ button:hover{
 }
 .buttonHolder{
 	display: flex;
+	justify-content: center;
 }
 .file{
 	opacity: 0;
@@ -44,7 +45,6 @@ button:hover{
 	width: 600px;
 	border: 1px solid #e2e2e2;
 	border-radius: 5px;
-	margin: 30px 0 0 0;
 	padding: 15px;
 }
 body{
@@ -96,5 +96,40 @@ body{
 	color: red;
 }
 .hidden{
-	display: none;
+	display: none !important; /* screw it */
+}
+.results{
+	text-align: left;
+	background-color: #ffffff;
+	border: 1px solid #e2e2e2;
+	border-radius: 5px;
+	margin: 30px 0 0 0;
+	padding: 15px;
+}
+.resultsheaderbargreen, .resultsheaderbaryellow, .resultsheaderbarred {
+	display: flex;
+	height: 48px;
+	align-items: center;
+}
+.resultsheaderbargreen > img, .resultsheaderbaryellow > img, .resultsheaderbarred > img {
+	height: 32px;
+	padding: 15px;
+}
+.resultsheaderbarred {
+	background-color: #ffdfdf;
+}
+.resultsheaderbaryellow {
+	background-color: #fff9d8;
+}
+.resultsheaderbargreen {
+	background-color: #dfffdf;
+}
+.loader {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.loader > img {
+	padding: 5px;
+	height: 16px;
 }

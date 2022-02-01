@@ -1,19 +1,9 @@
-//    ScratchTools - a set of simple Scratch related tools
-//    Copyright (C) 2021-2022  Xeltalliv
-//
-//    This program is free software: you can redistribute it and/or modify
-//    it under the terms of the GNU General Public License as published by
-//    the Free Software Foundation, either version 3 of the License, or
-//    (at your option) any later version.
-//
-//    This program is distributed in the hope that it will be useful,
-//    but WITHOUT ANY WARRANTY; without even the implied warranty of
-//    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-//    GNU General Public License for more details.
-//
-//    You should have received a copy of the GNU General Public License
-//    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
+/*
+apologies in advance for desecrating/mutilating/whatever you want to call it @Vadik1's great work. 
+I just picked it as my victim^H^H^H^H^H^H base because it had premade code for working with files
+and parsing Scratch projects, which is something I *really* didn't want to try and figure out
+because I was just too desperate for this thing to become a reality ASAP.
+*/
 String.prototype.occurrences = function(string, display) {
 	var r = this.indexOf(string);
 	var c = 0;
@@ -25,18 +15,24 @@ String.prototype.occurrences = function(string, display) {
 	return c;
 }
 
+var JSONFileSizeLimit = 5242880; //just in case they change it again
+var AssetSizeLimit = 10000000;
+var FilesInProject = []; // array of files in the project
+var oversizedFilesInProject = []; // array of files in the project that exceed a size limit. what else?
+var oversizedAssetsInProject = []; // great variable names aside, this stores, in human-readable format, a description of the asset that is exceeding the size limit, so it can easily be plopped into the results view.
+var projectJson;
+
 var Elements = {
 	urlInput: document.getElementById("urlInput"),
 	importError: document.getElementById("importError"),
 	filePicker: document.getElementById("filePicker"),
 	newbar: document.getElementById("new"),
 	oldbar: document.getElementById("old"),
-	checkboxMonit: document.getElementById("c0"),
-	checkboxCover: document.getElementById("c1"),
-	checkboxIdent: document.getElementById("c2"),
 	loadFromFile: document.getElementById("loadFromFile"),
-	loadFromUrl: document.getElementById("loadFromUrl"),
 	message: document.getElementById("message"),
+	results: document.querySelector(".results"),
+	loader: document.querySelector(".loader")
+	
 }
 
 var Loader = {
@@ -46,69 +42,34 @@ var Loader = {
 			Elements.filePicker.click();
 	},
 	loadFromFile2: async function(file) {
+		let filePromises = [];
 		try {
 			if(!file) throw new Error("No file was selected");
-
+			Elements.loader.classList = "loader";
 			Visual.lock();
 			let project;
-			let projectJson;
-			try {
-				project = await Loader.readBlob(file)
-				projectJson = JSON.parse(project);
-			} catch(e) {}
-
-			if(projectJson) {
-				project = await Minimizer.minimizeJSON(projectJson, project);
-				let blob = new Blob([project],{type:"text/plain;charset=utf-8"});
-				saveAs(blob, file.name);
-			} else {
-				let zip = await JSZip.loadAsync(file);
-				project = await zip.file("project.json").async("string");
-				projectJson = tryFunc(() => JSON.parse(project), "Failed to parse project's JSON");
-				project = await Minimizer.minimizeJSON(projectJson, project);
-				Loader.packageProject(project, {}, zip, file.name);
-			}
+			let zip = await JSZip.loadAsync(file);
+			project = await zip.file("project.json").async("string");
+			projectJson = tryFunc(() => JSON.parse(project), "Failed to parse project's JSON");
+			// i have no idea what I'm doing; this is probably horrible; sorry in advance
+			problemType = 0;
+			oversizedAssetsInProject = [];
+			FilesInProject = [];
+			oversizedFilesInProject = [];
+			zip.forEach(function (relativePath, file){
+				let currentfile = zip.file(relativePath).async("uint8array") //hnnnnngh why doesn't jszip have an easy way to just get the length of a file inside the archive gsdiojngsdiojfseoptjse9f
+				filePromises.push(currentfile)
+				currentfile
+					.then(function(value){
+						FilesInProject.push({name: relativePath, size: value.length}) // "side effects? what's that?"
+					})
+				
+			});
 		} catch(error) {
 			Elements.importError.innerText = error;
 		} finally {
 			Visual.unlock();
-		}
-	},
-
-	loadFromUrl: async function () {
-		try {
-			Visual.reset();
-			Visual.lock();
-
-			let id = parseInt(Elements.urlInput.value.match(/\d+/)?.[0]);
-			if(isNaN(id)) throw new Error("Invalid project URL or id");
-
-			await Visual.show("Loading project.json");
-			let project = await download("https://projects.scratch.mit.edu/"+id, "text", "Failed to download project");
-			let projectJson = tryFunc(() => JSON.parse(project), "Failed to parse project's JSON");
-			let targets = tryVal(projectJson.targets, "Targets not found");
-
-			let assets = {};
-			let assetCounter = [0, 0];
-			for(var spriteName in targets){
-				let sprite = targets[spriteName];
-				for(var asset in sprite.costumes) assetCounter[1]++;
-				for(var asset in sprite.sounds) assetCounter[1]++;
-			}
-			await Visual.show("Loading "+assetCounter[1]+" assets");
-			for(var spriteName in targets){
-				let sprite = targets[spriteName];
-				for(var asset in sprite.costumes) await Loader.processAsset(sprite.costumes[asset], assets, assetCounter);
-				for(var asset in sprite.sounds) await Loader.processAsset(sprite.sounds[asset], assets, assetCounter);
-			}
-			console.log("All assets loaded");
-
-			project = await Minimizer.minimizeJSON(projectJson, project);
-			Loader.packageProject(project, assets);
-		} catch(error) {
-			Elements.importError.innerText = error;
-		} finally {
-			Visual.unlock();
+			return Promise.all(filePromises)
 		}
 	},
 
@@ -143,279 +104,10 @@ var Loader = {
 	}
 }
 
-var Minimizer = {
-	minimizeJSON: async function(jsoned, content) { 
-		try{
-			var importantMonitors = {};
-
-			var blocks = [];
-			var variables = [];
-			var lists = [];
-			var broadcasts = [];
-			var comments = [];
-
-			var blocksAdded = {};
-			var variablesAdded = {};
-			var listsAdded = {};
-			var broadcastsAdded = {};
-			var commentsAdded = {};
-
-			await Visual.show("JSON pass 1");
-
-
-			let sprites = jsoned.targets;
-			for(let a=0; a<sprites.length; a++) {
-				let sprite = sprites[a];
-				for(let b in sprite.blocks) {
-					if(Elements.checkboxIdent.checked && !blocksAdded[b]) {
-						let tmp = [b, 0];
-						blocks.push(tmp);
-						blocksAdded[b] = true;
-					}
-					if(Elements.checkboxCover.checked) {
-						let block = sprite.blocks[b];
-						for(let c in block.inputs){
-							let u = block.inputs[c][2];
-							if(u && typeof(u)=="object") {
-								if(u[0] > 3 && u[0] < 9) u[1]=0;
-								if(u[0] == 10) u[1]="";
-							}
-						}
-					}
-					if(Elements.checkboxMonit.checked) {
-						let opcode = sprite.blocks[b].opcode;
-						if(opcode == "data_hidevariable" || opcode == "data_showvariable") {
-							importantMonitors[sprite.blocks[b].fields.VARIABLE[1]] = true;
-						}
-						if(opcode == "data_hidelist" || opcode == "data_showlist") {
-							importantMonitors[sprite.blocks[b].fields.LIST[1]] = true;
-						}
-					}
-				}
-				if(Elements.checkboxIdent.checked) {
-					for(let b in sprite.variables){
-						if(!variablesAdded[b]){
-							let tmp = [b, 0];
-							variables.push(tmp);
-							variablesAdded[b] = true;
-						}
-					}
-					for(let b in sprite.lists){
-						if(!listsAdded[b]){
-							let tmp = [b, 0];
-							lists.push(tmp);
-							listsAdded[b] = true;
-						}
-					}
-					for(let b in sprite.broadcasts){
-						if(!broadcastsAdded[b]){
-							let tmp = [b, 0];
-							broadcasts.push(tmp);
-							broadcastsAdded[b] = true;
-						}
-					}
-					for(let b in sprite.comments){
-						if(!commentsAdded[b]){
-							let tmp = [b, 0];
-							comments.push(tmp);
-							commentsAdded[b] = true;
-						}
-					}
-				}
-			}
-
-			if(Elements.checkboxMonit.checked && jsoned.monitors) {
-				let monitors = jsoned.monitors;
-				let newMonitors = [];
-				for(let a=0; a<monitors.length; a++) {
-					if(monitors[a].visible || importantMonitors[monitors[a].id]) {
-						newMonitors.push(monitors[a]);
-					}
-				}
-				jsoned.monitors = newMonitors;
-			}
-
-
-
-			await Visual.show("Counting occurances");
-
-			let all = [...blocks, ...variables, ...lists, ...broadcasts, ...comments];
-			let m = 0, n = 0;
-			for(var b in all){
-				all[b][1] = content.occurrences('"'+all[b][0]+'"');
-				m++;
-				if(m > 49) {
-					n += m;
-					m = 0;
-					Visual.newbar(n / blocks.length);
-					await waitFrame();
-				}
-			}
-
-
-
-			await Visual.show("Sorting");
-
-			let sorter = function(a, b) {
-				if(a[1] > b[1]) return -1;
-				if(a[1] < b[1]) return 1;
-				return 0;
-			}
-			blocks.sort(sorter);
-			variables.sort(sorter);
-			lists.sort(sorter);
-			broadcasts.sort(sorter);
-			comments.sort(sorter);
-			all.sort(sorter);
-
-
-
-			await Visual.show("Generating conversion table");
-    
-			let code = "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM0123456789"
-			let combin = [0,0,0];
-			let combin2 = ["q","q","q"];
-
-			function increment(combin, combin2, code, i){
-				if(combin[i] === undefined) {
-					combin.push(0);
-					combin2.push("q");
-					return;
-				}
-				combin[i]++;
-				if(combin[i] == code.length) {
-					combin[i] = 0;
-					combin2[i] = "q";
-					increment(combin, combin2, code, i+1);
-				}
-				combin2[i] = code[combin[i]];
-			}
-
-			var cTable2 = {};
-			for(var b in all){
-				increment(combin, combin2, code, 0);
-				cTable2[all[b][0]] = combin2.join("");
-			}
-			var cTable = new Proxy(cTable2,{
-				get(target, prop) {
-					if(target[prop] == undefined) {
-						increment(combin, combin2, code, 0);
-						target[prop] = cTable2[prop] = combin2.join("");
-					}
-					return target[prop];
-				}
-			});
-
-			await Visual.show("JSON pass 2");
-    
-			m = 0;
-			for(let a=0; a<sprites.length; a++) {
-				let sprite = sprites[a];
-				let newList = {};
-				for(let b in sprite.blocks) {
-					let block = sprite.blocks[b];
-					newList[cTable[b]] = block;
-					if(block.opcode){
-						if(block.parent ) block.parent  = cTable[block.parent ];
-						if(block.next   ) block.next    = cTable[block.next   ];
-						if(block.comment) block.comment = cTable[block.comment];
-						let inputs = block.inputs;
-						for(let c in inputs){
-							let input = inputs[c];
-							if(typeof input != "object") continue;
-							for(let d in input){
-								switch(typeof input[d]) {
-									case "string":
-										input[d] = cTable[input[d]];
-										break;
-									case "object":
-										if(!input[d]) continue;
-										if(input[d][0] == 11) input[d][2] = cTable[input[d][2]];
-										if(input[d][0] == 12) input[d][2] = cTable[input[d][2]];
-										if(input[d][0] == 13) input[d][2] = cTable[input[d][2]];
-										break;
-								}
-							}
-						}
-						let fields = block.fields;
-						if(fields.VARIABLE) fields.VARIABLE[1] = cTable[fields.VARIABLE[1]];
-						if(fields.LIST) fields.LIST[1] = cTable[fields.LIST[1]];
-						if(fields.BROADCAST_OPTION) fields.BROADCAST_OPTION[1] = cTable[fields.BROADCAST_OPTION[1]];
-					} else if(block){
-						if(block[0] == 11) block[2] = cTable[block[2]];
-						if(block[0] == 12) block[2] = cTable[block[2]];
-						if(block[0] == 13) block[2] = cTable[block[2]];
-					}
-					m++;
-					if(m > 199) {
-						m = 0;
-						Visual.newbar(a / sprites.length);
-						await waitFrame();
-					}
-				}
-				sprite.blocks = newList;
-				newList = {};
-				for(let b in sprite.variables){
-					newList[cTable[b]] = sprite.variables[b];
-				}
-				sprite.variables = newList;
-				newList = {};
-				for(let b in sprite.lists){
-					newList[cTable[b]] = sprite.lists[b];
-				}
-				sprite.lists = newList;
-				newList = {};
-				for(let b in sprite.broadcasts){
-					newList[cTable[b]] = sprite.broadcasts[b];
-				}
-				sprite.broadcasts = newList;
-				newList = {};
-				for(let b in sprite.comments){
-					newList[cTable[b]] = sprite.comments[b];
-					sprite.comments[b].blockId = cTable[sprite.comments[b].blockId];
-				}
-				sprite.comments = newList;
-			}
-			for(let a=0; a<jsoned.monitors.length; a++) {
-				jsoned.monitors[a].id = cTable[jsoned.monitors[a].id];
-			}
-
-
-			var content3 = JSON.stringify(jsoned);
-
-			if(false) {
-				await Visual.show("Searching for errors");
-				m = 0;
-				n = 0;
-				for(var b in all){
-					content3.occurrences('"'+all[b][0]+'"', true);
-					m++;
-					if(m > 199) {
-						n += m;
-						m = 0;
-						Visual.newbar(n / blocks.length);
-						await waitFrame();
-					}
-				}
-			}
-
-			var delta = content.length - content3.length;
-			Elements.message.innerText = "Size decreased by "+delta+" bytes";
-			Visual.newbar(content3.length / 5242880);
-			Visual.oldbar((content.length - content3.length) / 5242880);
-			return content3;
-		} catch(error) {
-			Elements.message.innerText='<span class=redText>'+error+'</span>';
-		}
-	}
-}
 
 var Visual = {
 	reset: function() {
-		Elements.newbar.style.width = "0%";
-		Elements.oldbar.style.width = "0%";
 		Elements.importError.innerText = "";
-		Elements.message.innerText = "nothing yet";
 	},
 
 	newbar: function(size) {
@@ -432,19 +124,11 @@ var Visual = {
 	},
 
 	lock: function() {
-		Elements.checkboxMonit.disabled = true;
-		Elements.checkboxCover.disabled = true;
-		Elements.checkboxIdent.disabled = true;
 		Elements.loadFromFile .disabled = true;
-		Elements.loadFromUrl  .disabled = true;
 	},
 
 	unlock: function() {
-		Elements.checkboxMonit.disabled = false;
-		Elements.checkboxCover.disabled = false;
-		Elements.checkboxIdent.disabled = false;
 		Elements.loadFromFile .disabled = false;
-		Elements.loadFromUrl  .disabled = false;
 	}
 }
 
@@ -452,9 +136,132 @@ Elements.filePicker.onchange = async function(e) {
 	let file = e.target.files[0]; 
 	if(!file) return;
 	Elements.filePicker.value = null;
-	Loader.loadFromFile2(file);
+	Loader.loadFromFile2(file).then(function() {
+		let ProblemType = 0; //0 for no issues, 1 for size warning (90-99% of JSON size limit), 2 for limits exceeded
+		let adviceType = []; //great googly moogly the scope in this thing is just a mess. this stores which kind of advice should be given, so that only the advice relevant to the current situation is shown.
+		for(const currentFile of FilesInProject){
+			if (currentFile.name == "project.json" && currentFile.size > (JSONFileSizeLimit * 0.9) && currentFile.size <= JSONFileSizeLimit){
+				oversizedAssetsInProject.push("project.json is close to size limit (" + (currentFile.size / 1048576).toPrecision(3) + "/" + (JSONFileSizeLimit / 1048576).toPrecision(3) + " MiB)");
+				adviceType.push("json");
+				if(ProblemType != 2) {
+					ProblemType = 1;
+				}
+			}
+			if (currentFile.name == "project.json" && currentFile.size > JSONFileSizeLimit){
+				oversizedAssetsInProject.push("project.json is too big (" + (currentFile.size / 1048576).toPrecision(3) + "/" + (JSONFileSizeLimit / 1048576).toPrecision(3) + " MiB)");
+				adviceType.push("json");
+				ProblemType = 2;
+			} else if (currentFile.size > AssetSizeLimit){
+				oversizedFilesInProject.push(currentFile.name);
+				if(adviceType.indexOf(currentFile.name.slice(-3)) == -1){ //check the last 3 letters of the file name, and if it isn't already in adviceType, put it in. 
+					adviceType.push(currentFile.name.slice(-3))
+				}
+				ProblemType = 2;
+			}
+		}
+		let targets = tryVal(projectJson.targets, "Targets not found");
+		// now that we have figured out all files in the project that are causing problems, we must iterate through all the assets to map the MD5 filenames to the name of their parent sprite and sound/costume
+			for(var spriteName in targets){
+				let sprite = targets[spriteName];
+				for(var asset in sprite.costumes){
+					if(oversizedFilesInProject.indexOf(sprite.costumes[asset].md5ext) != -1){
+						if(sprite.name == "Stage"){
+							oversizedAssetsInProject.push("Backdrop \"" + sprite.costumes[asset].name + "\" (" + sprite.costumes[asset].md5ext.slice(-3) + ") is too big") //I was going to remark about how this is actually impossible, since 960x720x4bpp = 2,764,800 bytes, but then I remembered SVGs existed. man, who the hell has a 10 MB SVG file?
+						} else {
+							oversizedAssetsInProject.push("Costume \"" + sprite.costumes[asset].name + "\" (" + sprite.costumes[asset].md5ext.slice(-3) + ") in sprite \"" + sprite.name + "\" is too big")
+						}
+					}
+				}
+				for(var asset in sprite.sounds){
+					if(oversizedFilesInProject.indexOf(sprite.sounds[asset].md5ext) != -1){
+						if(sprite.name == "Stage"){
+							oversizedAssetsInProject.push("Sound \"" + sprite.sounds[asset].name + "\" (" + sprite.sounds[asset].md5ext.slice(-3) + ") in Stage is too big")
+						} else {
+							oversizedAssetsInProject.push("Sound \"" + sprite.sounds[asset].name + "\" (" + sprite.sounds[asset].md5ext.slice(-3) + ") in sprite \"" + sprite.name + "\" is too big")
+						}
+					}
+				}
+			}
+		//FINALLY we can start dispensing advice.
+		let TempElement = null; //stores the element that we are working with right now
+		TempElement = document.querySelectorAll(".resultstext") // clean up after the previous advice
+		if(TempElement != null){
+			for (let advice of TempElement) {
+				advice.remove()
+			}
+		}
+		Elements.results.classList = "results";
+		Elements.loader.classList = "loader hidden";
+		//error, warning and OK icons are my own work. 
+		if(ProblemType == 0){
+			Elements.results.children[0].classList = "resultsheaderbargreen"
+			Elements.results.children[0].children[1].textContent = "No problems found"
+			Elements.results.children[0].children[0].setAttribute("src", "okicon.png")
+			newElement("p", "resultstext", "Your project does not exceed any of Scratch's project size limits.", Elements.results)
+			newElement("p", "resultstext", "If you are experiencing save issues, make sure that you have a solid Internet connection and that you are logged into Scratch. If all else fails, try again later.", Elements.results)
+		} else if(ProblemType == 1){
+			Elements.results.children[0].classList = "resultsheaderbaryellow"
+			Elements.results.children[0].children[1].textContent = "Potential issues found"
+			Elements.results.children[0].children[0].setAttribute("src", "warningicon.png")
+			newElement("ul", "resultstext", "", Elements.results)
+			for(asset of oversizedAssetsInProject){
+				newElement("li", "", asset, Elements.results.children[1])
+			}
+		} else if(ProblemType == 2){
+			Elements.results.children[0].classList = "resultsheaderbarred"
+			if(oversizedAssetsInProject.length == 1){ //dammit I forgot about this and now I gotta fix it before I get flack for making a tool that told you that it found "1 issues" with an S on the end.
+				Elements.results.children[0].children[1].textContent = (oversizedAssetsInProject.length + " issue found")
+			}else{
+				Elements.results.children[0].children[1].textContent = (oversizedAssetsInProject.length + " issues found")
+			}
+			Elements.results.children[0].children[0].setAttribute("src", "erroricon.png")
+			newElement("ul", "resultstext", "", Elements.results)
+			for(asset of oversizedAssetsInProject){
+				newElement("li", "", asset, Elements.results.children[1])
+			}
+		}
+		if(adviceType.indexOf("json") != -1){
+			newElement("p", "resultstext json", "", Elements.results)
+			newElement("b", "", "For project.json: ", document.querySelector(".json"))
+			document.querySelector(".json").append("For an immediate fix, try ")
+			newLink("https://xeltalliv.github.io/ScratchTools/ProjectJsonMinimizer/", "compressing project.json ", document.querySelector(".json"))
+			document.querySelector(".json").append("(this can provide somewhere around a 30% size reduction). To further reduce the size, get rid of anything that is not needed, express any data as compactly as possible, and use as few blocks as you can (in general, fewer blocks means less size).")
+		}
+		if(adviceType.indexOf("wav") != -1){
+			newElement("p", "resultstext wav", "", Elements.results)
+			newElement("b", "", "For .wav files: ", document.querySelector(".wav"))
+			document.querySelector(".wav").append("The recommended fix for oversized WAV files is to ")
+			newLink("https://cloudconvert.com/wav-to-mp3", "convert them to .mp3. ", document.querySelector(".wav"))
+			document.querySelector(".wav").append("Even with default settings, this should usually result in a small enough file. If it isn't small enough, try uploading it again, clicking the wrench icon and adjusting the \"Audio Qscale\" option until the file is small enough.")
+		}
+		if(adviceType.indexOf("mp3") != -1){
+			newElement("p", "resultstext mp3", "", Elements.results)
+			newElement("b", "", "For .mp3 files: ", document.querySelector(".mp3"))
+			document.querySelector(".mp3").append("You may want to try ")
+			newLink("https://cloudconvert.com/wav-to-mp3", "re-encoding the .mp3 file ", document.querySelector(".mp3"))
+			document.querySelector(".mp3").append("with a lower bit rate. On CloudConvert, you can do this by uploading your .mp3 file, clicking the wrench icon, and adjusting the \"Audio Qscale\" option until the file is small enough. If the loss in audio quality is objectionable, or if the resulting file is still not small enough, you can instead use an audio editor to split the .mp3 file into two or more chunks.")
+		}
+		if(adviceType.indexOf("svg") != -1){
+			newElement("p", "resultstext svg", "", Elements.results)
+			newElement("b", "", "For .svg files: ", document.querySelector(".svg"))
+			document.querySelector(".svg").append("Wait, where did you find a 10 MB SVG file? Anyways, you should probably just convert it to bitmap in the costume editor and leave it at that (the author of this program certainly doesn't have any better ideas). ")
+		}
+		console.log("DONE")
+	})
 }
 
+function newElement(tag, classes, content, appendee){ //goes through the process of creating a new element, setting up its properties, and appending it to something.
+	let temporaryElement = document.createElement(tag)
+	temporaryElement.classList = classes
+	temporaryElement.textContent = content
+	appendee.append(temporaryElement)
+}
+function newLink(href, content, appendee){
+	let temporaryElement = document.createElement("a")
+	temporaryElement.setAttribute("href", href)
+	temporaryElement.textContent = content
+	appendee.append(temporaryElement)
+}
 function tryFunc(func, error) {
 	try {
 		return func();
@@ -477,36 +284,5 @@ function waitFrame(){
 	});
 }
 
-
 var requestsAwaiting = [];
 var requestsActive = 0;
-
-function download(url, type, error) {
-	return new Promise((resolve, reject) => {
-		requestsAwaiting.push({url:url, type:type, resolve:resolve, reject:reject, error:error});
-		downloadNext();
-	});
-}
-
-function downloadNext() {
-	if(requestsAwaiting > 9 || requestsAwaiting.length == 0) return;
-	requestsActive++;
-	var current = requestsAwaiting.shift();
-	var XHR = ("onload" in new XMLHttpRequest()) ? XMLHttpRequest : XDomainRequest;
-	var xhr = new XHR();
-	if(current.type) xhr.responseType = current.type;
-	xhr.open('GET', current.url, true);
-	xhr.onload = function() {
-		if(current.type == "arraybuffer"){
-			current.resolve(this.response);
-		} else {
-			current.resolve(this.responseText);
-		}
-		requestsActive--;
-		downloadNext();
-	}
-	xhr.onerror = function() {
-		alert(current.error);
-	}
-	xhr.send();
-}
