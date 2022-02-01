@@ -11,7 +11,6 @@ Written in javascript, so github-pages for this repository is enabled.
 #### [Project Save Troubleshooter](https://xeltalliv.github.io/ScratchTools/ProjectJsonMinimizer/)
 
 Automatically tells you if your Scratch project exceeds either of Scratch's project size limits. 
----
 
 ## License
 
