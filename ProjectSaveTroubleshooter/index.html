@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Troubleshooter</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<link rel="stylesheet" href="./style.css"/>
+    </head>
+    <body>
+		<div class=uppertext>
+			<span class="title">Scratch 3 project save troubleshooter</span>
+		</div>
+    <div class="content">
+      <div style="display:flex; justify-content: center;">
+        <p style="width:850px;">This tool checks if your Scratch project exceeds either of Scratch's <a href="https://scratch.mit.edu/discuss/topic/366461">project size limits</a>. There is a 10 MB limit on individual sound and costume files, and a 5 MB limit on the project.json file, which contains all of your project's code.</p>
+      </div>
+      <div class=inb>
+        <div class=buttonHolder><button onclick=Loader.loadFromFile() id=loadFromFile>Upload project file</button></div>
+        <span id=importError class=redText></span>
+        <input type=file class=hidden id=filePicker accept=".sb3, .zip">
+        <!-- throbber necessary so that the user does not think it's frozen. throbber image is public domain. https://commons.wikimedia.org/wiki/File:Ajax-loader.gif -->
+        <div class="loader hidden">
+          <img src="Ajax-loader.gif"></img>
+          Working...
+        </div>
+        <div class="results hidden">
+          <div class="resultsheaderbar hidden">
+            <img src=""></img>
+            <h2></h2>
+          </div>
+        </div>
+      </div>
+      <br>
+      <br>
+      <br>
+      <p>Hastily bodged together by Flowermanvista, 2022</p>
+      <p>Based off of <a href="https://scratch.mit.edu/users/Vadik1/">@Vadik1</a>'s <a href="https://xeltalliv.github.io/ScratchTools/ProjectJsonMinimizer/">Project.json Minimizer</a></p>
+    </div>
+		
+		<script src=../vendor/JSZip/jszip.js></script>
+		<script src=../vendor/FileSaver/FileSaver.js></script>
+
+		<script src=main.js></script>
+	</body>
+</html>
