@@ -8,7 +8,7 @@ Written in javascript, so github-pages for this repository is enabled.
 
 ## Description
 
-#### [Project Save Troubleshooter](https://flowermanvista.github.io/ScratchTools/ProjectJsonMinimizer/index.html)
+#### [Project Save Troubleshooter](https://flowermanvista.github.io/ScratchTools/ProjectSaveTroubleshooter/index.html)
 
 Automatically tells you if your Scratch project exceeds either of Scratch's project size limits. 
 
